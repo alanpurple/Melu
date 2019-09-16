@@ -1,10 +1,8 @@
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column,Integer,String,CHAR
+from connect_db import base
 
-Base=declarative_base()
-
-class Movie(Base):
-    #__tablename__='movie'
+class Movie(base):
+    __tablename__='movie'
 
     id=Column(Integer,primary_key=True)
     title=Column(String)
