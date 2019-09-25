@@ -10,3 +10,6 @@ class Rating(base):
     user_id=Column(Integer,ForeignKey('user.id'))
     movie_id=Column(Integer,ForeignKey('movie.id'))
     rate=Column(Integer)
+
+    user=relationship('User',foreign_keys=[user_id])
+    movie=relationship('Movie',foreign_keys=[movie_id])

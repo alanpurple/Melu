@@ -10,3 +10,4 @@ class Movie(base):
     actor=Column(String)
     director=Column(String)
     rated=Column(CHAR)
+    genre=Column(String)
