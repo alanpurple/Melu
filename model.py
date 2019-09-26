@@ -2,13 +2,13 @@ from tensorflow.keras import metrics,Model,layers,Sequential,activations,regular
 
 class MeluLocal(Model):
 
-    def __init__(self,layer_sizes,num_layers=5):
+    def __init__(self,layer_sizes,num_layers=4):
         super(MeluLocal,self).__init__(name='MeluLocal')
         assert(len(layer_sizes)==num_layers)
         self.layers=[]
-        for i in range(num_layers-1):
+        for i in range(num_layers):
             self.layers.append(layers.Dense(layer_sizes[i]),activations.relu)
-        self.final_layer=layers.Dense(layer_sizes[-1],activations.sigmoid)
+        self.final_layer=layers.Dense(1,activations.sigmoid)
 
     def call(self,inputs):
         x=inputs

@@ -5,6 +5,8 @@ from tensorflow.keras import metrics,Model,layers,Sequential,losses
 from connect_db import Session,engine
 from data_models import Movie,User,Rating
 import json
+from model import MeluGlobal,MeluLocal
+from sqlalchemy import func
 
 # get all rating
 # divide movies before 1997 and after 1998 ( approximately 8:2 )
@@ -15,6 +17,7 @@ import json
 
 MOVIE_MIN_YEAR=1919
 MOVIE_MAX_YEAR=2000
+MAX_USER_ID=6040
 
 def main():
     session=Session()
@@ -72,10 +75,24 @@ def main():
     train_genres=[all_movies_df.loc[elem.movie_id].genre for elem in rating_existing]
     train_rateds=[all_movies_df.loc[elem.movie_id].rated for elem in rating_existing]
 
+    train_labels=[(elem.rate-1)*0.25 for elem in rating_existing]
+
+    rating_existing_group=[[] for _ in range(MAX_USER_ID+1)]
+    for rating in rating_existing:
+        rating_existing_group[rating.user_id].append(rating)
+
+
     dict_sizes={'zipcode':len(zipcode_dict),'actor':len(actor_dict),
                 'authdir':len(director_dict),'rated':len(rated_dict),
                 'year':MOVIE_MAX_YEAR-MOVIE_MIN_YEAR+1}
     emb_sizes={'zipcode':100,'actor':50,'authdir':50,'rated':5,'year':15}
+
+    local_model=MeluLocal([64,32,16,4],4)
+    global_model=MeluGlobal(dict_sizes,emb_sizes,1)
+    
+    for epoch in range(30):
+        with tf.GradientTape() as tape:
+            pass
 
 
 def get_movie_dict(movie_dict_file):
