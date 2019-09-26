@@ -13,32 +13,46 @@ import json
 # remove rating for existing items rated by new users
 # remove rating for new items rated by existing users
 
+MOVIE_MIN_YEAR=1919
+MOVIE_MAX_YEAR=2000
 
 def main():
     session=Session()
     # query with condition? alternative
     all_users=session.query(User).all()
-    existing_movies=session.query(Movie).filter(Movie.year<1998).all()
-    new_movies=session.query(Movie).filter(Movie.year>1997).all()
+    all_movies=session.query(Movie).all()
+
+    actor_dict,director_dict,rated_dict,genre_dict=get_movie_dict('movie_dict.json')
+    #author_dict,publisher_dict=get_book_dict('book_dict.json')
+    
+    with open('movie_user_zipcodes.json','r') as f:
+        zipcodes=json.load(f)
+    zipcode_dict=dict(zip(zipcodes,range(len(zipcodes))))
 
     all_users_id=[elem.id for elem in all_users]
     all_users_data=[{'gender':elem.gender,'occupation':elem.occupation,'age':elem.age,'zipcode':elem.zipcode} for elem in all_users]
 
     all_users_df=pd.DataFrame(all_users_data,index=all_users_id)
 
-    existing_movies_id=[elem.id for elem in existing_movies]
-    existing_movies_data=[{
-        'year':elem.year,'actor':elem.actor,'title':elem.title,'rated':elem.rated,
-        'director':elem.director,'genre':elem.genre
-        } for elem in existing_movies]
-    new_movies_id=[elem.id for elem in new_movies]
-    new_movies_data=[{
-        'year':elem.year,'actor':elem.actor,'title':elem.title,'rated':elem.rated,
-        'director':elem.director,'genre':elem.genre
-        } for elem in new_movies]
+    all_users_df.gender=(all_users_df.gender=='M').astype(int)
+    all_users_df.zipcode=all_users_df.zipcode.apply(lambda x: zipcode_dict[x])
 
-    existing_movies_df=pd.DataFrame(existing_movies_data,index=existing_movies_id)
-    new_movies_df=pd.DataFrame(new_movies_data,index=new_movies_id)
+    all_movies_id=[elem.id for elem in all_movies]
+    all_movies_data=[{
+        'year':elem.year,'actor':elem.actor,'title':elem.title,'rated':elem.rated,
+        'director':elem.director,'genre':elem.genre
+        } for elem in all_movies]
+
+    all_movies_df=pd.DataFrame(all_movies_data,index=all_movies_id)
+
+    all_movies_df.actor=all_movies_df.actor.apply(lambda x: actor_dict[x])
+    all_movies_df.director=all_movies_df.director.apply(lambda x: director_dict[x])
+    all_movies_df.rated=all_movies_df.rated.apply(lambda x: rated_dict[x])
+    all_movies_df.genre=all_movies_df.genre.apply(lambda x: genre_dict[x])
+    all_movies_df.year=all_movies_df.year - MOVIE_MIN_YEAR
+
+    existing_movies_df=all_movies_df[all_movies_df.year<1998-MOVIE_MIN_YEAR]
+    new_movies_df=all_movies_df[all_movies_df.year>1997-MOVIE_MIN_YEAR]
 
     user_mask=np.random.rand(len(all_users_df)) < 0.8
     user_existing=all_users_df[user_mask]
@@ -49,8 +63,20 @@ def main():
     rating_new_exist=session.query(Rating).join(User).filter(User.id.in_(user_new.index)).join(Movie).filter(Movie.year<1998).all()
     rating_new_new=session.query(Rating).join(User).filter(User.id.in_(user_new.index)).join(Movie).filter(Movie.year>1997).all()
 
-    actor_dict,director_dict,rated_dict,genre_dict=get_movie_dict('movie_dict.json')
-    author_dict,publisher_dict=get_book_dict('book_dict.json')
+    train_genders=[1 if elem.user.genre=='M' else 0 for elem in rating_existing]
+    train_occupations=[elem.user.occupation for elem in rating_existing]
+    train_ages=[elem.user.age for elem in rating_existing]
+    train_zipcodes=[all_users_df.loc[elem.user_id].zipcode for elem in rating_existing]
+    train_actors=[all_movies_df.loc[elem.movie_id].actor for elem in rating_existing]
+    train_directors=[all_movies_df.loc[elem.movie_id].director for elem in rating_existing]
+    train_genres=[all_movies_df.loc[elem.movie_id].genre for elem in rating_existing]
+    train_rateds=[all_movies_df.loc[elem.movie_id].rated for elem in rating_existing]
+
+    dict_sizes={'zipcode':len(zipcode_dict),'actor':len(actor_dict),
+                'authdir':len(director_dict),'rated':len(rated_dict),
+                'year':MOVIE_MAX_YEAR-MOVIE_MIN_YEAR+1}
+    emb_sizes={'zipcode':100,'actor':50,'authdir':50,'rated':5,'year':15}
+
 
 def get_movie_dict(movie_dict_file):
     with open(movie_dict_file,'r') as f:
