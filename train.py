@@ -25,6 +25,12 @@ def main():
     all_users=session.query(User).all()
     all_movies=session.query(Movie).all()
 
+    user_rating_counts=session.query(Rating.user_id,func.count(Rating.user_id)).group_by(Rating.user_id).all()
+
+    # user with more than 40 ratings
+    user_filtered=filter(lambda x: x[1]>39,user_rating_counts)
+    actual_users_index=[elem[0] for elem in user_filtered]
+
     actor_dict,director_dict,rated_dict,genre_dict=get_movie_dict('movie_dict.json')
     #author_dict,publisher_dict=get_book_dict('book_dict.json')
     
@@ -57,15 +63,19 @@ def main():
     existing_movies_df=all_movies_df[all_movies_df.year<1998-MOVIE_MIN_YEAR]
     new_movies_df=all_movies_df[all_movies_df.year>1997-MOVIE_MIN_YEAR]
 
-    user_mask=np.random.rand(len(all_users_df)) < 0.8
-    user_existing=all_users_df[user_mask]
-    user_new=all_users_df[~user_mask]
+    #user_mask=np.random.rand(len(all_users_df)) < 0.8
+    #user_existing=all_users_df[user_mask]
+    #user_new=all_users_df[~user_mask]
+    user_existing=all_users_df[all_users_df.index.isin(actual_users_index)]
+    user_new=all_users_df[~all_users_df.index.isin(actual_users_index)]
+
 
     rating_existing=session.query(Rating).join(User).filter(User.id.in_(user_existing.index)).join(Movie).filter(Movie.year<1998).all()
     rating_exist_new=session.query(Rating).join(User).filter(User.id.in_(user_existing.index)).join(Movie).filter(Movie.year>1997).all()
     rating_new_exist=session.query(Rating).join(User).filter(User.id.in_(user_new.index)).join(Movie).filter(Movie.year<1998).all()
     rating_new_new=session.query(Rating).join(User).filter(User.id.in_(user_new.index)).join(Movie).filter(Movie.year>1997).all()
 
+    '''
     train_genders=[1 if elem.user.genre=='M' else 0 for elem in rating_existing]
     train_occupations=[elem.user.occupation for elem in rating_existing]
     train_ages=[elem.user.age for elem in rating_existing]
@@ -76,10 +86,13 @@ def main():
     train_rateds=[all_movies_df.loc[elem.movie_id].rated for elem in rating_existing]
 
     train_labels=[(elem.rate-1)*0.25 for elem in rating_existing]
+    '''
 
     rating_existing_group=[[] for _ in range(MAX_USER_ID+1)]
     for rating in rating_existing:
-        rating_existing_group[rating.user_id].append(rating)
+        # 40 ratings per user, 36 for train, 4(randomly selected) for validation
+        if len(rating_existing_group[rating.user_id])<40:
+            rating_existing_group[rating.user_id].append(rating)
 
 
     dict_sizes={'zipcode':len(zipcode_dict),'actor':len(actor_dict),
