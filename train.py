@@ -216,6 +216,8 @@ def main():
             global_optimizer.apply_gradient(zip(final_theta2_grad,local_model.trainable_weights))
             local_model.save_weights('theta2.h5')
 
+            # To Do: evaluate validation
+
 
 def get_movie_dict(movie_dict_file):
     with open(movie_dict_file,'r') as f:
@@ -232,9 +234,6 @@ def get_book_dict(book_dict_file):
     author_dict=dict(zip(book_dict['authors'],range(len(book_dict['authors']))))
     publisher_dict=dict(zip(book_dict['publishers'],range(len(book_dict['publishers']))))
     return author_dict,publisher_dict
-
-def extract_movie_data(data):
-    pass
 
 if __name__=='__main__':
     main()
