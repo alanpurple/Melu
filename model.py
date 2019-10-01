@@ -25,6 +25,7 @@ class MeluGlobal(Model):
         self.type=type
         self.authdir_emb=layers.Embedding(dict_sizes['authdir'],emb_sizes['authdir'])
         self.year_emb=layers.Embedding(dict_sizes['year'],emb_sizes['year'])
+        self.age_emb=layers.Embdding(dict_sizes['age'],emb_sizes['age'])
         self.concat=layers.Concatenate()
         if type==0:
             pass
@@ -32,14 +33,18 @@ class MeluGlobal(Model):
             self.actor_emb=layers.Embedding(dict_sizes['actor'],emb_sizes['actor'])
             self.rated_emb=layers.Embedding(dict_sizes['rated'],emb_sizes['rated'])
             self.genre_emb=layers.Embedding(dict_sizes['genre'],emb_sizes['genre'])
+            self.occu_emb=layers.Embedding(dict_sizes['occu'],emb_sizes['occu'])
+            self.zipcode_emb=layers.Embedding(dict_sizes['zipcode'],emb_sizes['zipcode'])
             
     def call(self,inputs):
         authdir=self.authdir_emb(inputs['authdir'])
         year=self.year_emb(inputs['year'])
+        age=self.age_emb(inputs['age'])
         if self.type==0:
             return
         else:
             actor=self.actor_emb(inputs['actor'])
             rated=self.rated_emb(inputs['rated'])
             genre=self.genre_emb(inputs['genre'])
-            return self.concat([authdir,year,actor,rated,genre])
+            occu=self.occu_emb(inputs['occu'])
+            return self.concat([authdir,year,age,actor,rated,genre,occu])

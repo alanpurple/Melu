@@ -1,12 +1,13 @@
 import tensorflow as tf
 import pandas as pd
 import numpy as np
-from tensorflow.keras import metrics,Model,layers,Sequential,losses
+from tensorflow.keras import metrics,Model,layers,Sequential,losses,optimiziers
 from connect_db import Session,engine
 from data_models import Movie,User,Rating
 import json
 from model import MeluGlobal,MeluLocal
 from sqlalchemy import func
+from math import floor
 
 # get all rating
 # divide movies before 1997 and after 1998 ( approximately 8:2 )
@@ -18,6 +19,10 @@ from sqlalchemy import func
 MOVIE_MIN_YEAR=1919
 MOVIE_MAX_YEAR=2000
 MAX_USER_ID=6040
+scenario_len=36
+validatioin_len=4
+alpha=0.01
+beta=0.01
 
 def main():
     session=Session()
@@ -43,8 +48,17 @@ def main():
 
     all_users_df=pd.DataFrame(all_users_data,index=all_users_id)
 
+    # occupation doesn't need hashing
+    occu_dict_size=all_users_df.occupation.max()+1
+
     all_users_df.gender=(all_users_df.gender=='M').astype(int)
     all_users_df.zipcode=all_users_df.zipcode.apply(lambda x: zipcode_dict[x])
+
+    user_ages=sorted(all_users_df.age.unique())
+    # age may be quantifiable, but every person in their age periods has their own culture and style 
+    age_dict=dict(zip(user_ages,len(user_ages)))
+
+    all_users_df.age=all_users_df.age.apply(lambda x:age_dict[x])
 
     all_movies_id=[elem.id for elem in all_movies]
     all_movies_data=[{
@@ -91,21 +105,116 @@ def main():
     rating_existing_group=[[] for _ in range(MAX_USER_ID+1)]
     for rating in rating_existing:
         # 40 ratings per user, 36 for train, 4(randomly selected) for validation
-        if len(rating_existing_group[rating.user_id])<40:
+        if len(rating_existing_group[rating.user_id])<scenario_len+validatioin_len:
             rating_existing_group[rating.user_id].append(rating)
 
 
     dict_sizes={'zipcode':len(zipcode_dict),'actor':len(actor_dict),
                 'authdir':len(director_dict),'rated':len(rated_dict),
-                'year':MOVIE_MAX_YEAR-MOVIE_MIN_YEAR+1}
-    emb_sizes={'zipcode':100,'actor':50,'authdir':50,'rated':5,'year':15}
+                'year':MOVIE_MAX_YEAR-MOVIE_MIN_YEAR+1,'occu':occu_dict_size,
+                'age':len(age_dict)}
+    emb_sizes={'zipcode':100,'actor':50,'authdir':50,'rated':5,'year':15,'occu':4,'age':2}
 
     local_model=MeluLocal([64,32,16,4],4)
     global_model=MeluGlobal(dict_sizes,emb_sizes,1)
+
+    USER_BATCH_SIZE=32
+
+    # task batch size should divide scenario length
+    TASK_BATCH_SIZE=8
+
+    total_batch=floor(len(actual_users_index)/USER_BATCH_SIZE)
+    remaining_users=len(actual_users_index)%USER_BATCH_SIZE
+
+    local_loss_fn=losses.BinaryCrossentropy()
+    local_optimizer=optimiziers.Adam(alpha)
+    global_optimizer=optimiziers.Adam(beta)
+
+
+    local_model.save_weights('theta2.h5')
     
     for epoch in range(30):
-        with tf.GradientTape() as tape:
-            pass
+        print('start epoch {}'.format(epoch))
+        for i in range(total_batch):
+            print('user batch # {}'.format(i))
+            users=rating_existing_group[i*USER_BATCH_SIZE:(i+1)*USER_BATCH_SIZE]
+            # calculate local weights per user
+            for j,user in enumerate(users):
+                local_model.load_weights('theta2.h5')
+                for k in range(scenario_len/TASK_BATCH_SIZE):
+                    task_batch=user[k*TASK_BATCH_SIZE:(k+1)*TASK_BATCH_SIZE]
+                    batch_input={
+                        'authdir':[existing_movies_df.loc[elem.movie_id].director for elem in task_batch],
+                        'actor':[existing_movies_df.loc[elem.movie_id].actor for elem in task_batch],
+                        'occu':[all_users_df.loc[elem.user_id].occupation for elem in task_batch ],
+                        'age':[all_users_df.loc[elem.user_id].age for elem in task_batch ],
+                        'year':[existing_movies_df.loc[elem.movie_id].year for elem in task_batch],
+                        'zipcode':[all_users_df.loc[elem.user_id].zipcode for elem in task_batch],
+                        'rated':[existing_movies_df.loc[elem.movie_id].rated for elem in task_batch],
+                        'genre':[existing_movies_df.loc[elem.movie_id].genre for elem in task_batch]
+                    }
+                    batch_lables=[elem.rate for elem in task_batch]
+                    batch_emb_out=global_model(batch_input)
+                    with tf.GradientTape() as tape:
+                        logits=local_model(batch_emb_out)
+                        local_loss=local_loss_fn(batch_lables,logits)
+                    local_grads=tape.gradient(local_loss,local_model.trainable_weights)
+                    local_optimizer.apply_gradient(zip(local_grads,local_model.trainable_weights))
+                local_model.save_weights('theta2_{}.h5'.format(j))
+            # calculate gradients for each uesr
+            theta1_grads=[]
+            for j,user in enumerate(users):
+                local_model.load_weights('theta2_{}.h5'.format(j))
+                for k in range(scenario_len/TASK_BATCH_SIZE):
+                    task_batch=user[k*TASK_BATCH_SIZE:(k+1)*TASK_BATCH_SIZE]
+                    batch_input={
+                        'authdir':[existing_movies_df.loc[elem.movie_id].director for elem in task_batch],
+                        'actor':[existing_movies_df.loc[elem.movie_id].actor for elem in task_batch],
+                        'occu':[all_users_df.loc[elem.user_id].occupation for elem in task_batch ],
+                        'age':[all_users_df.loc[elem.user_id].age for elem in task_batch ],
+                        'year':[existing_movies_df.loc[elem.movie_id].year for elem in task_batch],
+                        'zipcode':[all_users_df.loc[elem.user_id].zipcode for elem in task_batch],
+                        'rated':[existing_movies_df.loc[elem.movie_id].rated for elem in task_batch],
+                        'genre':[existing_movies_df.loc[elem.movie_id].genre for elem in task_batch]
+                    }
+                    batch_lables=[elem.rate for elem in task_batch]
+                    batch_emb_out=global_model(batch_input)
+                    with tf.GradientTape() as tape:
+                        logits=local_model(batch_emb_out)
+                        local_loss=local_loss_fn(batch_lables,logits)
+                    # there will be USER_BATCH_SIZE * scenario_len/TASK_BATCH_SIZE gradients
+                    theta1_grads.append(tape.gradient(local_loss,global_model.trainable_weights))
+            # apply every gradients to embedding layer weights
+            final_theta1_grad=tf.add_n(theta1_grads)
+            global_optimizer.apply_gradient(zip(final_theta1_grad,global_model.trainable_weights))
+
+            # calculate each local gradients per user for updated global theta1
+            theta2_grads=[]
+            for j,user in enumerate(users):
+                local_model.load_weights('theta2_{}.h5'.format(j))
+                for k in range(scenario_len/TASK_BATCH_SIZE):
+                    task_batch=user[k*TASK_BATCH_SIZE:(k+1)*TASK_BATCH_SIZE]
+                    batch_input={
+                        'authdir':[existing_movies_df.loc[elem.movie_id].director for elem in task_batch],
+                        'actor':[existing_movies_df.loc[elem.movie_id].actor for elem in task_batch],
+                        'occu':[all_users_df.loc[elem.user_id].occupation for elem in task_batch ],
+                        'age':[all_users_df.loc[elem.user_id].age for elem in task_batch ],
+                        'year':[existing_movies_df.loc[elem.movie_id].year for elem in task_batch],
+                        'zipcode':[all_users_df.loc[elem.user_id].zipcode for elem in task_batch],
+                        'rated':[existing_movies_df.loc[elem.movie_id].rated for elem in task_batch],
+                        'genre':[existing_movies_df.loc[elem.movie_id].genre for elem in task_batch]
+                    }
+                    batch_lables=[elem.rate for elem in task_batch]
+                    batch_emb_out=global_model(batch_input)
+                    with tf.GradientTape() as tape:
+                        logits=local_model(batch_emb_out)
+                        local_loss=local_loss_fn(batch_lables,logits)
+                    theta2_grads.append(tape.gradient(local_loss,local_model.trainable_weights))
+            # update global dense layer weights
+            local_model.load_weights('theta2.h5')
+            final_theta2_grad=tf.add_n(theta2_grads)
+            global_optimizer.apply_gradient(zip(final_theta2_grad,local_model.trainable_weights))
+            local_model.save_weights('theta2.h5')
 
 
 def get_movie_dict(movie_dict_file):
