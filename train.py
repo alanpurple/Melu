@@ -130,17 +130,21 @@ def main():
     local_optimizer=optimiziers.Adam(alpha)
     global_optimizer=optimiziers.Adam(beta)
 
-
-    local_model.save_weights('theta2.h5')
+    #local_model.save_weights('theta2.h5')
+    local_model_weights=local_model.get_weights()
     
     for epoch in range(30):
         print('start epoch {}'.format(epoch))
         for i in range(total_batch):
             print('user batch # {}'.format(i))
             users=rating_existing_group[i*USER_BATCH_SIZE:(i+1)*USER_BATCH_SIZE]
+
+            theta2_user_weights=[]
+
             # calculate local weights per user
             for j,user in enumerate(users):
-                local_model.load_weights('theta2.h5')
+                #local_model.load_weights('theta2.h5')
+                local_model.set_weights(local_model_weights)
                 for k in range(scenario_len/TASK_BATCH_SIZE):
                     task_batch=user[k*TASK_BATCH_SIZE:(k+1)*TASK_BATCH_SIZE]
                     batch_input={
@@ -160,11 +164,13 @@ def main():
                         local_loss=local_loss_fn(batch_lables,logits)
                     local_grads=tape.gradient(local_loss,local_model.trainable_weights)
                     local_optimizer.apply_gradient(zip(local_grads,local_model.trainable_weights))
-                local_model.save_weights('theta2_{}.h5'.format(j))
+                #local_model.save_weights('theta2_{}.h5'.format(j))
+                theta2_user_weights.append(local_model.get_weights())
             # calculate gradients for each uesr
             theta1_grads=[]
             for j,user in enumerate(users):
-                local_model.load_weights('theta2_{}.h5'.format(j))
+                #local_model.load_weights('theta2_{}.h5'.format(j))
+                local_model.set_weights(theta2_user_weights[j])
                 for k in range(scenario_len/TASK_BATCH_SIZE):
                     task_batch=user[k*TASK_BATCH_SIZE:(k+1)*TASK_BATCH_SIZE]
                     batch_input={
@@ -185,13 +191,14 @@ def main():
                     # there will be USER_BATCH_SIZE * scenario_len/TASK_BATCH_SIZE gradients
                     theta1_grads.append(tape.gradient(local_loss,global_model.trainable_weights))
             # apply every gradients to embedding layer weights
-            final_theta1_grad=tf.add_n(theta1_grads)
+            final_theta1_grad=tf.add_n(theta1_grads)/USER_BATCH_SIZE
             global_optimizer.apply_gradient(zip(final_theta1_grad,global_model.trainable_weights))
 
             # calculate each local gradients per user for updated global theta1
             theta2_grads=[]
             for j,user in enumerate(users):
-                local_model.load_weights('theta2_{}.h5'.format(j))
+                #local_model.load_weights('theta2_{}.h5'.format(j))
+                local_model.set_weights(theta2_user_weights[j])
                 for k in range(scenario_len/TASK_BATCH_SIZE):
                     task_batch=user[k*TASK_BATCH_SIZE:(k+1)*TASK_BATCH_SIZE]
                     batch_input={
@@ -211,10 +218,12 @@ def main():
                         local_loss=local_loss_fn(batch_lables,logits)
                     theta2_grads.append(tape.gradient(local_loss,local_model.trainable_weights))
             # update global dense layer weights
-            local_model.load_weights('theta2.h5')
+            #local_model.load_weights('theta2.h5')
+            local_model.set_weights(local_model_weights)
             final_theta2_grad=tf.add_n(theta2_grads)
             global_optimizer.apply_gradient(zip(final_theta2_grad,local_model.trainable_weights))
-            local_model.save_weights('theta2.h5')
+            #local_model.save_weights('theta2.h5')
+            local_model_weights=local_model.get_weights()
 
             # To Do: evaluate validation
 
