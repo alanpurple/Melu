@@ -126,15 +126,19 @@ def main():
     total_batch=floor(len(actual_users_index)/USER_BATCH_SIZE)
     remaining_users=len(actual_users_index)%USER_BATCH_SIZE
 
-    local_loss_fn=losses.BinaryCrossentropy()
+    local_loss_fn=losses.MeanAbsoluteError()
     local_optimizer=optimiziers.Adam(alpha)
     global_optimizer=optimiziers.Adam(beta)
 
     #local_model.save_weights('theta2.h5')
     local_model_weights=local_model.get_weights()
-    
+
+    # prepare training metric
+    val_metric=metrics.MeanAbsoluteError()
+    total_val_loss=0
     for epoch in range(30):
         print('start epoch {}'.format(epoch))
+        prev_val_loss=total_val_loss
         for i in range(total_batch):
             print('user batch # {}'.format(i))
             users=rating_existing_group[i*USER_BATCH_SIZE:(i+1)*USER_BATCH_SIZE]
@@ -226,6 +230,32 @@ def main():
             local_model_weights=local_model.get_weights()
 
             # To Do: evaluate validation
+            # use MAE ( paper's choice )
+            batch_val_loss=0
+            for j,user in enumerate(users):
+                validation_batch=user[scenario_len:scenario_len+validatioin_len]   # this is actually all of it
+                batch_input={
+                    'authdir':[existing_movies_df.loc[elem.movie_id].director for elem in validation_batch],
+                    'actor':[existing_movies_df.loc[elem.movie_id].actor for elem in validation_batch],
+                    'occu':[all_users_df.loc[elem.user_id].occupation for elem in validation_batch ],
+                    'age':[all_users_df.loc[elem.user_id].age for elem in validation_batch ],
+                    'year':[existing_movies_df.loc[elem.movie_id].year for elem in validation_batch],
+                    'zipcode':[all_users_df.loc[elem.user_id].zipcode for elem in validation_batch],
+                    'rated':[existing_movies_df.loc[elem.movie_id].rated for elem in validation_batch],
+                    'genre':[existing_movies_df.loc[elem.movie_id].genre for elem in validation_batch]
+                }
+                batch_lables=[elem.rate for elem in validation_batch]
+
+                val_embedded=local_model.predict(batch_input,validatioin_len)
+                val_logits=global_model(val_embedded)
+                val_metric(batch_lables,val_logits)
+                total_val_loss=total_val_loss+val_metric.result()
+                val_metric.reset_state()
+
+
+            print('validation loss: %s' % (float(batch_val_loss),))
+            # To do: end train if validation loss increases of not be reduced enogh - Early stopping 
+                
 
 
 def get_movie_dict(movie_dict_file):
@@ -243,6 +273,12 @@ def get_book_dict(book_dict_file):
     author_dict=dict(zip(book_dict['authors'],range(len(book_dict['authors']))))
     publisher_dict=dict(zip(book_dict['publishers'],range(len(book_dict['publishers']))))
     return author_dict,publisher_dict
+
+def ndcg(label,pred):
+    pass
+
+def dcg():
+    pass
 
 if __name__=='__main__':
     main()
