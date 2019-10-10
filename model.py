@@ -1,18 +1,18 @@
-from tensorflow.keras import metrics,Model,layers,Sequential,activations,regularizers,Input
+from tensorflow.keras import Model,layers,activations
 
 class MeluLocal(Model):
 
     def __init__(self,layer_sizes,num_layers=4):
         super(MeluLocal,self).__init__(name='MeluLocal')
         assert(len(layer_sizes)==num_layers)
-        self.layers=[]
+        self.dense_layers=[]
         for i in range(num_layers):
-            self.layers.append(layers.Dense(layer_sizes[i]),activations.relu)
+            self.dense_layers.append(layers.Dense(layer_sizes[i],activations.relu))
         self.final_layer=layers.Dense(1,activations.sigmoid)
 
     def call(self,inputs):
         x=inputs
-        for layer in self.layers:
+        for layer in self.dense_layers:
             x=layer(x)
         return self.final_layer(x)
 
@@ -25,7 +25,7 @@ class MeluGlobal(Model):
         self.type=type
         self.authdir_emb=layers.Embedding(dict_sizes['authdir'],emb_sizes['authdir'])
         self.year_emb=layers.Embedding(dict_sizes['year'],emb_sizes['year'])
-        self.age_emb=layers.Embdding(dict_sizes['age'],emb_sizes['age'])
+        self.age_emb=layers.Embedding(dict_sizes['age'],emb_sizes['age'])
         self.concat=layers.Concatenate()
         if type==0:
             pass

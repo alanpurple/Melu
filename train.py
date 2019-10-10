@@ -1,7 +1,7 @@
 import tensorflow as tf
 import pandas as pd
 import numpy as np
-from tensorflow.keras import metrics,Model,layers,Sequential,losses,optimiziers
+from tensorflow.keras import metrics,Model,layers,Sequential,losses,optimizers
 from connect_db import Session,engine
 from data_models import Movie,User,Rating
 import json
@@ -56,7 +56,7 @@ def main():
 
     user_ages=sorted(all_users_df.age.unique())
     # age may be quantifiable, but every person in their age periods has their own culture and style 
-    age_dict=dict(zip(user_ages,len(user_ages)))
+    age_dict=dict(zip(user_ages,range(len(user_ages))))
 
     all_users_df.age=all_users_df.age.apply(lambda x:age_dict[x])
 
@@ -112,8 +112,8 @@ def main():
     dict_sizes={'zipcode':len(zipcode_dict),'actor':len(actor_dict),
                 'authdir':len(director_dict),'rated':len(rated_dict),
                 'year':MOVIE_MAX_YEAR-MOVIE_MIN_YEAR+1,'occu':occu_dict_size,
-                'age':len(age_dict)}
-    emb_sizes={'zipcode':100,'actor':50,'authdir':50,'rated':5,'year':15,'occu':4,'age':2}
+                'age':len(age_dict),'genre':len(genre_dict)}
+    emb_sizes={'zipcode':100,'actor':50,'authdir':50,'rated':5,'year':15,'occu':4,'age':2,'genre':15}
 
     local_model=MeluLocal([64,32,16,4],4)
     global_model=MeluGlobal(dict_sizes,emb_sizes,1)
@@ -121,24 +121,36 @@ def main():
     USER_BATCH_SIZE=32
 
     # task batch size should divide scenario length
-    TASK_BATCH_SIZE=8
+    TASK_BATCH_SIZE=9
 
     total_batch=floor(len(actual_users_index)/USER_BATCH_SIZE)
     remaining_users=len(actual_users_index)%USER_BATCH_SIZE
 
     local_loss_fn=losses.MeanAbsoluteError()
-    local_optimizer=optimiziers.Adam(alpha)
-    global_optimizer=optimiziers.Adam(beta)
+    local_optimizer=optimizers.Adam(alpha)
+    global_optimizer=optimizers.Adam(beta)
 
     #local_model.save_weights('theta2.h5')
     local_model_weights=local_model.get_weights()
 
     # prepare training metric
     val_metric=metrics.MeanAbsoluteError()
-    total_val_loss=0
     for epoch in range(30):
         print('start epoch {}'.format(epoch))
-        prev_val_loss=total_val_loss
+        # previous validation loss to decide early stopping
+        # prev_val_loss - epoch-1 loss
+        # prev2_val_loss - epoch-2 loss
+        # prev3_val_loss - epoch-3 loss
+        if epoch>19:
+            prev3_val_loss=prev2_val_loss
+            prev2_val_loss=prev_val_loss
+            prev_val_loss=total_val_loss
+        elif epoch==19:
+            prev2_val_loss=prev_val_loss
+            prev_val_loss=total_val_loss
+        elif epoch==18:
+            prev_val_loss=total_val_loss
+        total_val_loss=0
         for i in range(total_batch):
             print('user batch # {}'.format(i))
             users=rating_existing_group[i*USER_BATCH_SIZE:(i+1)*USER_BATCH_SIZE]
@@ -149,7 +161,7 @@ def main():
             for j,user in enumerate(users):
                 #local_model.load_weights('theta2.h5')
                 local_model.set_weights(local_model_weights)
-                for k in range(scenario_len/TASK_BATCH_SIZE):
+                for k in range(int(scenario_len/TASK_BATCH_SIZE)):
                     task_batch=user[k*TASK_BATCH_SIZE:(k+1)*TASK_BATCH_SIZE]
                     batch_input={
                         'authdir':[existing_movies_df.loc[elem.movie_id].director for elem in task_batch],
@@ -175,7 +187,7 @@ def main():
             for j,user in enumerate(users):
                 #local_model.load_weights('theta2_{}.h5'.format(j))
                 local_model.set_weights(theta2_user_weights[j])
-                for k in range(scenario_len/TASK_BATCH_SIZE):
+                for k in range(int(scenario_len/TASK_BATCH_SIZE)):
                     task_batch=user[k*TASK_BATCH_SIZE:(k+1)*TASK_BATCH_SIZE]
                     batch_input={
                         'authdir':[existing_movies_df.loc[elem.movie_id].director for elem in task_batch],
@@ -203,7 +215,7 @@ def main():
             for j,user in enumerate(users):
                 #local_model.load_weights('theta2_{}.h5'.format(j))
                 local_model.set_weights(theta2_user_weights[j])
-                for k in range(scenario_len/TASK_BATCH_SIZE):
+                for k in range(int(scenario_len/TASK_BATCH_SIZE)):
                     task_batch=user[k*TASK_BATCH_SIZE:(k+1)*TASK_BATCH_SIZE]
                     batch_input={
                         'authdir':[existing_movies_df.loc[elem.movie_id].director for elem in task_batch],
@@ -254,7 +266,20 @@ def main():
 
 
             print('validation loss: %s' % (float(batch_val_loss),))
-            # To do: end train if validation loss increases of not be reduced enogh - Early stopping 
+            total_val_loss+=batch_val_loss
+            # To do: end train if validation loss increases of not be reduced enogh - Early stopping
+        if epoch%5==0:
+            local_model.save('models/local_model_{}.h5'.format(epoch))
+            global_model.save('models/global_model_{}.h5'.format(epoch))
+        if epoch>19:
+            min_prev_loss=min([prev_val_loss,prev2_val_loss,prev3_val_loss])
+            print('previous validation loss: ',min_prev_loss)
+            print('current validation loss at epoch {}: '.format(epoch), total_val_loss)
+            if total_val_loss>min_prev_loss:
+                print('total validation loss increases, end training')
+                break
+    local_model.save('models/local_model_{}_final.h5'.format(epoch))
+    global_model.save('models/global_model_{}_final.h5'.format(epoch))
                 
 
 
