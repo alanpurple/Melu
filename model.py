@@ -1,5 +1,6 @@
-from tensorflow.keras import Model,layers,activations
+from tensorflow.keras import Model,layers,activations,Input
 
+'''
 class MeluLocal(Model):
 
     def __init__(self,layer_sizes,num_layers=4):
@@ -15,7 +16,12 @@ class MeluLocal(Model):
         for layer in self.dense_layers:
             x=layer(x)
         return self.final_layer(x)
-
+'''
+def MeluLocal(layer_sizes,num_layers=4):
+    assert(len(layer_sizes)==num_layers)
+    local_input=Input()
+    
+'''
 class MeluGlobal(Model):
     # 0 for bookcross, 1 for movielens
     def __init__(self,dict_sizes,emb_sizes,type=1):
@@ -48,3 +54,7 @@ class MeluGlobal(Model):
             genre=self.genre_emb(inputs['genre'])
             occu=self.occu_emb(inputs['occu'])
             return self.concat([authdir,year,age,actor,rated,genre,occu])
+'''
+def MeluGlobal(dict_sizes,emb_sizes,type=1):
+    if type!=0 and type!=1:
+        raise TypeError('wrong data type')
