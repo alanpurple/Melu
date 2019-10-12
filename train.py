@@ -115,7 +115,7 @@ def main():
                 'age':len(age_dict),'genre':len(genre_dict)}
     emb_sizes={'zipcode':100,'actor':50,'authdir':50,'rated':5,'year':15,'occu':4,'age':2,'genre':15}
 
-    local_model=MeluLocal([64,32,16,4],4)
+    local_model=MeluLocal([64,32,16,4])
     global_model=MeluGlobal(dict_sizes,emb_sizes,1)
 
     USER_BATCH_SIZE=32

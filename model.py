@@ -3,12 +3,11 @@ from tensorflow.keras import Model,layers,activations,Input
 '''
 class MeluLocal(Model):
 
-    def __init__(self,layer_sizes,num_layers=4):
+    def __init__(self,layer_sizes):
         super(MeluLocal,self).__init__(name='MeluLocal')
-        assert(len(layer_sizes)==num_layers)
         self.dense_layers=[]
-        for i in range(num_layers):
-            self.dense_layers.append(layers.Dense(layer_sizes[i],activations.relu))
+        for size in layer_sizes:
+            self.dense_layers.append(layers.Dense(size,activations.relu))
         self.final_layer=layers.Dense(1,activations.sigmoid)
 
     def call(self,inputs):
@@ -17,9 +16,15 @@ class MeluLocal(Model):
             x=layer(x)
         return self.final_layer(x)
 '''
-def MeluLocal(layer_sizes,num_layers=4):
+def MeluLocal(emb_input_size,layer_sizes):
     assert(len(layer_sizes)==num_layers)
-    local_input=Input()
+    local_input=Input((emb_input_size,))
+    x=local_input
+    for size in layer_sizes:
+        x=layers.Dense(size,activations.relu)(x)
+    output=layers.Dense(1,activations.sigmoid)(x)
+    return Model(local_input,output)
+
     
 '''
 class MeluGlobal(Model):
