@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{528d0cc4-520e-45c0-9b6d-2f74c78a810d}</ProjectGuid>
+    <ProjectHome />
+    <StartupFile>add_ratings.py</StartupFile>
+    <SearchPath>data_models\</SearchPath>
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <ProjectTypeGuids>{888888a0-9f3d-457c-b088-3a5042f75d52}</ProjectTypeGuids>
+    <LaunchProvider>Standard Python launcher</LaunchProvider>
+    <InterpreterId />
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'" />
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'" />
+  <PropertyGroup>
+    <VisualStudioVersion Condition=" '$(VisualStudioVersion)' == '' ">10.0</VisualStudioVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="add_ratings.py" />
+    <Compile Include="connect_db.py" />
+    <Compile Include="data_models\movie.py" />
+    <Compile Include="data_models\rating.py" />
+    <Compile Include="data_models\user.py" />
+    <Compile Include="data_models\__init__.py" />
+    <Compile Include="imdb_crawler.py" />
+    <Compile Include="make_book_labels.py" />
+    <Compile Include="make_movie_labels.py" />
+    <Compile Include="model.py" />
+    <Compile Include="movie_user_zip.py" />
+    <Compile Include="train.py" />
+    <Compile Include="train_wide_deep.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="data_models" />
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+</Project>

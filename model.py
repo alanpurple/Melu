@@ -53,8 +53,37 @@ class MeluGlobal(Model):
             rated=self.rated_emb(inputs['rated'])
             genre=self.genre_emb(inputs['genre'])
             occu=self.occu_emb(inputs['occu'])
+            zipicode=self.zipcode_emb(inputs['zipcode'])
             return self.concat([authdir,year,age,actor,rated,genre,occu])
 '''
 def MeluGlobal(dict_sizes,emb_sizes,type=1):
     if type!=0 and type!=1:
         raise TypeError('wrong data type')
+    authdir_input=Input((dict_sizes['authdir'],))
+    year_input=Input((dict_sizes['year'],))
+    age_input=Input((dict_sizes['age'],))
+    inputs=[authdir_input,year_input,age_input]
+    embeddings=[
+        layers.Embedding(dict_sizes['authdir'],emb_sizes['authdir'])(authdiractor_input),
+        layers.Embedding(dict_sizes['year'],emb_sizes['year'])(year_input),
+        layers.Embedding(dict_sizes['age'],emb_sizes['age'])(age_input)
+        ]
+    if type==0:
+        pass
+    else:
+        actor_input=Input((dict_sizes['actor'],))
+        rated_input=Input((dict_sizes['rated'],))
+        genre_input=Input((dict_sizes['genre'],))
+        occu_input=Input((dict_sizes['occu'],))
+        zipcode_input=Input((dict_sizes['zipcode'],))
+        inputs.extend([aactor_input,rated_input,genre_input,occu_input,zipcode_input])
+        embeddings.extend([
+            layers.Embedding(dict_sizes['actor'],emb_sizes['actor'])(actor_inactor_input),
+            layers.Embedding(dict_sizes['rated'],emb_sizes['rated'])(rated_input),
+            layers.Embedding(dict_sizes['genre'],emb_sizes['genre'])(genre_input),
+            layers.Embedding(dict_sizes['occu'],emb_sizes['occu'])(occu_input),
+            layers.Embedding(dict_sizes['zipcode'],emb_sizes['zipcode'])(zipcode_input)
+            ])
+    output=layers.Concatenate()(embeddings)
+
+    return Model(inputs,output)
