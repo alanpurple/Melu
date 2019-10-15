@@ -3,3 +3,4 @@ data/
 *.json
 __pycache__/
 .vs/
+*.png

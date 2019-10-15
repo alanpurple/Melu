@@ -1,7 +1,7 @@
 import tensorflow as tf
 import pandas as pd
 import numpy as np
-from tensorflow.keras import metrics,Model,layers,Sequential,losses,optimizers
+from tensorflow.keras import metrics,Model,layers,Sequential,losses,optimizers,utils
 from connect_db import Session,engine
 from data_models import Movie,User,Rating
 import json
@@ -108,15 +108,23 @@ def main():
         if len(rating_existing_group[rating.user_id])<scenario_len+validatioin_len:
             rating_existing_group[rating.user_id].append(rating)
 
-
     dict_sizes={'zipcode':len(zipcode_dict),'actor':len(actor_dict),
                 'authdir':len(director_dict),'rated':len(rated_dict),
                 'year':MOVIE_MAX_YEAR-MOVIE_MIN_YEAR+1,'occu':occu_dict_size,
                 'age':len(age_dict),'genre':len(genre_dict)}
     emb_sizes={'zipcode':100,'actor':50,'authdir':50,'rated':5,'year':15,'occu':4,'age':2,'genre':15}
 
-    local_model=MeluLocal([64,32,16,4])
     global_model=MeluGlobal(dict_sizes,emb_sizes,1)
+    emb_input_size=sum([v for k,v in emb_sizes.items()])
+    local_model=MeluLocal(emb_input_size,[64,32,16,4])
+
+    print(global_model.summary())
+    print(local_model.summary())
+    utils.plot_model(global_model,'global.png',True,expand_nested=True)
+    utils.plot_model(local_model,'local.png',True,expand_nested=True)
+
+    print(local_model.inputs)
+    print(global_model.inputs)
 
     USER_BATCH_SIZE=32
 
@@ -131,11 +139,11 @@ def main():
     global_optimizer=optimizers.Adam(beta)
     global_loss_fn=losses.MeanAbsoluteError()
 
-    local_model.compile(local_optimizer,local_loss_fn,[metrics.MeanAbsoluteError()])
-    global_model.compile(global_optimizer,global_loss_fn,[metrics.MeanAbsoluteError()])
+    #local_model.compile(local_optimizer,local_loss_fn,[metrics.MeanAbsoluteError()])
+    #global_model.compile(global_optimizer,global_loss_fn,[metrics.MeanAbsoluteError()])
 
     #local_model.save_weights('theta2.h5')
-    local_model_weights=local_model.sample_weights
+    local_model_weights=local_model.get_weights()
 
     # prepare training metric
     val_metric=metrics.MeanAbsoluteError()
@@ -157,7 +165,7 @@ def main():
         total_val_loss=0
         for i in range(total_batch):
             print('user batch # {}'.format(i))
-            users=rating_existing_group[i*USER_BATCH_SIZE:(i+1)*USER_BATCH_SIZE]
+            users=[rating_existing_group[elem] for elem in actual_users_index[i*USER_BATCH_SIZE:(i+1)*USER_BATCH_SIZE]]
 
             theta2_user_weights=[]
 
@@ -165,26 +173,28 @@ def main():
 
             # calculate local weights per user
             for j,user in enumerate(users):
+                print('user #',j)
                 #local_model.load_weights('theta2.h5')
-                if i>0:
-                    local_model.set_weights(local_model_weights)
-                for k in range(int(scenario_len/TASK_BATCH_SIZE)):
-                    task_batch=user[k*TASK_BATCH_SIZE:(k+1)*TASK_BATCH_SIZE]
-                    batch_input={
-                        'authdir':np.array([existing_movies_df.loc[elem.movie_id].director for elem in task_batch]),
-                        'actor':np.array([existing_movies_df.loc[elem.movie_id].actor for elem in task_batch]),
-                        'occu':np.array([all_users_df.loc[elem.user_id].occupation for elem in task_batch]),
-                        'age':np.array([all_users_df.loc[elem.user_id].age for elem in task_batch]),
-                        'year':np.array([existing_movies_df.loc[elem.movie_id].year for elem in task_batch]),
-                        'zipcode':np.array([all_users_df.loc[elem.user_id].zipcode for elem in task_batch]),
-                        'rated':np.array([existing_movies_df.loc[elem.movie_id].rated for elem in task_batch]),
-                        'genre':np.array([existing_movies_df.loc[elem.movie_id].genre for elem in task_batch])
-                    }
-                    batch_labels=[elem.rate for elem in task_batch]
-                    batch_emb_out=global_model(batch_input)
+                local_model.set_weights(local_model_weights)
+                # [authdir,year,age,actor,rated,genre,occu,zipcode]
+                user_data=[
+                    [existing_movies_df.loc[elem.movie_id].director,
+                    existing_movies_df.loc[elem.movie_id].year,
+                    all_users_df.loc[elem.user_id].age,
+                    existing_movies_df.loc[elem.movie_id].actor,
+                    existing_movies_df.loc[elem.movie_id].rated,
+                    existing_movies_df.loc[elem.movie_id].genre,
+                    all_users_df.loc[elem.user_id].occupation,
+                    all_users_df.loc[elem.user_id].zipcode
+                    ] for elem in user
+                ]
+                label_data=[elem.rate for elem in user]
+                train_dataset=tf.data.Dataset.from_tensor_slices((user_data,label_data)).batch(TASK_BATCH_SIZE,True)
+                for step,(user_batch,label_batch) in enumerate(train_dataset):
+                    batch_emb_out=global_model(user_batch)
                     with tf.GradientTape() as tape:
                         logits=local_model(batch_emb_out)
-                        local_loss=local_loss_fn(batch_labels,logits)
+                        local_loss=local_loss_fn(label_batch,logits)
                     local_grads=tape.gradient(local_loss,local_model.trainable_weights)
                     local_optimizer.apply_gradients(zip(local_grads,local_model.trainable_weights))
                 #local_model.save_weights('theta2_{}.h5'.format(j))
@@ -194,26 +204,34 @@ def main():
             for j,user in enumerate(users):
                 #local_model.load_weights('theta2_{}.h5'.format(j))
                 local_model.set_weights(theta2_user_weights[j])
-                for k in range(int(scenario_len/TASK_BATCH_SIZE)):
-                    task_batch=user[k*TASK_BATCH_SIZE:(k+1)*TASK_BATCH_SIZE]
-                    batch_input={
-                        'authdir':np.array([existing_movies_df.loc[elem.movie_id].director for elem in task_batch]),
-                        'actor':np.array([existing_movies_df.loc[elem.movie_id].actor for elem in task_batch]),
-                        'occu':np.array([all_users_df.loc[elem.user_id].occupation for elem in task_batch]),
-                        'age':np.array([all_users_df.loc[elem.user_id].age for elem in task_batch]),
-                        'year':np.array([existing_movies_df.loc[elem.movie_id].year for elem in task_batch]),
-                        'zipcode':np.array([all_users_df.loc[elem.user_id].zipcode for elem in task_batch]),
-                        'rated':np.array([existing_movies_df.loc[elem.movie_id].rated for elem in task_batch]),
-                        'genre':np.array([existing_movies_df.loc[elem.movie_id].genre for elem in task_batch])
-                    }
-                    batch_labels=[elem.rate for elem in task_batch]
-                    batch_emb_out=global_model(batch_input)
+                user_data=[
+                    [existing_movies_df.loc[elem.movie_id].director,
+                    existing_movies_df.loc[elem.movie_id].year,
+                    all_users_df.loc[elem.user_id].age,
+                    existing_movies_df.loc[elem.movie_id].actor,
+                    existing_movies_df.loc[elem.movie_id].rated,
+                    existing_movies_df.loc[elem.movie_id].genre,
+                    all_users_df.loc[elem.user_id].occupation,
+                    all_users_df.loc[elem.user_id].zipcode
+                    ] for elem in user
+                ]
+                label_data=[elem.rate for elem in user]
+                train_dataset=tf.data.Dataset.from_tensor_slices((user_data,label_data)).batch(TASK_BATCH_SIZE,True)
+                for step,(user_batch,label_batch) in enumerate(train_dataset):
                     with tf.GradientTape() as tape:
+                        batch_emb_out=global_model(user_batch)
                         logits=local_model(batch_emb_out)
-                        local_loss=local_loss_fn(batch_labels,logits)
-                    # there will be USER_BATCH_SIZE * scenario_len/TASK_BATCH_SIZE gradients
-                    theta1_grads.append(tape.gradient(local_loss,global_model.trainable_weights))
+                        local_loss=local_loss_fn(label_batch,logits)
+                        # there will be USER_BATCH_SIZE * scenario_len/TASK_BATCH_SIZE gradients
+                    grad=tape.gradient(local_loss,global_model.trainable_weights)
+                    global_optimizer.apply_gradients(zip(grad,global_model.trainable_weights))
+                    theta1_grads.append(grad)
             # apply every gradients to embedding layer weights
+            print(len(theta1_grads))
+            print(len(theta1_grads[0]))
+            print(type(theta1_grads[0]))
+            print(theta1_grads[0][0])
+            print(theta1_grads[0][1])
             final_theta1_grad=tf.add_n(theta1_grads)/USER_BATCH_SIZE
             global_optimizer.apply_gradients(zip(final_theta1_grad,global_model.trainable_weights))
 
@@ -222,23 +240,24 @@ def main():
             for j,user in enumerate(users):
                 #local_model.load_weights('theta2_{}.h5'.format(j))
                 local_model.set_weights(theta2_user_weights[j])
-                for k in range(int(scenario_len/TASK_BATCH_SIZE)):
-                    task_batch=user[k*TASK_BATCH_SIZE:(k+1)*TASK_BATCH_SIZE]
-                    batch_input={
-                        'authdir':np.array([existing_movies_df.loc[elem.movie_id].director for elem in task_batch]),
-                        'actor':np.array([existing_movies_df.loc[elem.movie_id].actor for elem in task_batch]),
-                        'occu':np.array([all_users_df.loc[elem.user_id].occupation for elem in task_batch]),
-                        'age':np.array([all_users_df.loc[elem.user_id].age for elem in task_batch]),
-                        'year':np.array([existing_movies_df.loc[elem.movie_id].year for elem in task_batch]),
-                        'zipcode':np.array([all_users_df.loc[elem.user_id].zipcode for elem in task_batch]),
-                        'rated':np.array([existing_movies_df.loc[elem.movie_id].rated for elem in task_batch]),
-                        'genre':np.array([existing_movies_df.loc[elem.movie_id].genre for elem in task_batch])
-                    }
-                    batch_labels=[elem.rate for elem in task_batch]
-                    batch_emb_out=global_model(batch_input)
+                user_data=[
+                    [existing_movies_df.loc[elem.movie_id].director,
+                    existing_movies_df.loc[elem.movie_id].year,
+                    all_users_df.loc[elem.user_id].age,
+                    existing_movies_df.loc[elem.movie_id].actor,
+                    existing_movies_df.loc[elem.movie_id].rated,
+                    existing_movies_df.loc[elem.movie_id].genre,
+                    all_users_df.loc[elem.user_id].occupation,
+                    all_users_df.loc[elem.user_id].zipcode
+                    ] for elem in user
+                ]
+                label_data=[elem.rate for elem in user]
+                train_dataset=tf.data.Dataset.from_tensor_slices((user_data,label_data)).batch(TASK_BATCH_SIZE,True)
+                for step,(user_batch,label_batch) in enumerate(train_dataset):
+                    batch_emb_out=global_model(user_batch)
                     with tf.GradientTape() as tape:
                         logits=local_model(batch_emb_out)
-                        local_loss=local_loss_fn(batch_labels,logits)
+                        local_loss=local_loss_fn(label_batch,logits)
                     theta2_grads.append(tape.gradient(local_loss,local_model.trainable_weights))
             # update global dense layer weights
             #local_model.load_weights('theta2.h5')
@@ -253,19 +272,20 @@ def main():
             batch_val_loss=0
             for j,user in enumerate(users):
                 validation_batch=user[scenario_len:scenario_len+validatioin_len]   # this is actually all of it
-                batch_input={
-                    'authdir':np.array([existing_movies_df.loc[elem.movie_id].director for elem in validation_batch]),
-                    'actor':np.array([existing_movies_df.loc[elem.movie_id].actor for elem in validation_batch]),
-                    'occu':np.array([all_users_df.loc[elem.user_id].occupation for elem in validation_batch]),
-                    'age':np.array([all_users_df.loc[elem.user_id].age for elem in validation_batch]),
-                    'year':np.array([existing_movies_df.loc[elem.movie_id].year for elem in validation_batch]),
-                    'zipcode':np.array([all_users_df.loc[elem.user_id].zipcode for elem in validation_batch]),
-                    'rated':np.array([existing_movies_df.loc[elem.movie_id].rated for elem in validation_batch]),
-                    'genre':np.array([existing_movies_df.loc[elem.movie_id].genre for elem in validation_batch])
-                }
+                batch_input=[
+                    [existing_movies_df.loc[elem.movie_id].director,
+                    existing_movies_df.loc[elem.movie_id].year,
+                    all_users_df.loc[elem.user_id].age,
+                    existing_movies_df.loc[elem.movie_id].actor,
+                    existing_movies_df.loc[elem.movie_id].rated,
+                    existing_movies_df.loc[elem.movie_id].genre,
+                    all_users_df.loc[elem.user_id].occupation,
+                    all_users_df.loc[elem.user_id].zipcode
+                    ] for elem in validation_batch
+                ]
                 batch_labels=[elem.rate for elem in validation_batch]
 
-                val_embedded=local_model.predict(batch_input,validatioin_len)
+                val_embedded=local_model.predict_on_batch(batch_input,validatioin_len)
                 val_logits=global_model(val_embedded)
                 val_metric(batch_labels,val_logits)
                 total_val_loss=total_val_loss+val_metric.result()

@@ -1,4 +1,5 @@
 from tensorflow.keras import Model,layers,activations,Input
+import tensorflow as tf
 
 '''
 class MeluLocal(Model):
@@ -17,7 +18,6 @@ class MeluLocal(Model):
         return self.final_layer(x)
 '''
 def MeluLocal(emb_input_size,layer_sizes):
-    assert(len(layer_sizes)==num_layers)
     local_input=Input((emb_input_size,))
     x=local_input
     for size in layer_sizes:
@@ -64,31 +64,28 @@ class MeluGlobal(Model):
 def MeluGlobal(dict_sizes,emb_sizes,type=1):
     if type!=0 and type!=1:
         raise TypeError('wrong data type')
-    authdir_input=Input((dict_sizes['authdir'],))
-    year_input=Input((dict_sizes['year'],))
-    age_input=Input((dict_sizes['age'],))
-    inputs=[authdir_input,year_input,age_input]
+    
+    if type==0:
+        # [authdir,year,age,pub]
+        input=Input((4),name='book_input',dtype=tf.int32)
+    else:
+        # [authdir,year,age,actor,rated,genre,occu,zipcode]
+        input=Input((8),name='movie_input',dtype=tf.int32)
     embeddings=[
-        layers.Embedding(dict_sizes['authdir'],emb_sizes['authdir'])(authdiractor_input),
-        layers.Embedding(dict_sizes['year'],emb_sizes['year'])(year_input),
-        layers.Embedding(dict_sizes['age'],emb_sizes['age'])(age_input)
+        layers.Embedding(dict_sizes['authdir'],emb_sizes['authdir'],name='auth_emb')(input[:,0]),
+        layers.Embedding(dict_sizes['year'],emb_sizes['year'],name='year_emb')(input[:,1]),
+        layers.Embedding(dict_sizes['age'],emb_sizes['age'],name='age_emb')(input[:,2])
         ]
     if type==0:
-        pass
+        embeddings.append(layers.Embedding(dict_sizes['pub'],emb_sizes['pub'],name='pub_emb')(input[:,3]))
     else:
-        actor_input=Input((dict_sizes['actor'],))
-        rated_input=Input((dict_sizes['rated'],))
-        genre_input=Input((dict_sizes['genre'],))
-        occu_input=Input((dict_sizes['occu'],))
-        zipcode_input=Input((dict_sizes['zipcode'],))
-        inputs.extend([aactor_input,rated_input,genre_input,occu_input,zipcode_input])
         embeddings.extend([
-            layers.Embedding(dict_sizes['actor'],emb_sizes['actor'])(actor_inactor_input),
-            layers.Embedding(dict_sizes['rated'],emb_sizes['rated'])(rated_input),
-            layers.Embedding(dict_sizes['genre'],emb_sizes['genre'])(genre_input),
-            layers.Embedding(dict_sizes['occu'],emb_sizes['occu'])(occu_input),
-            layers.Embedding(dict_sizes['zipcode'],emb_sizes['zipcode'])(zipcode_input)
+            layers.Embedding(dict_sizes['actor'],emb_sizes['actor'])(input[:,3]),
+            layers.Embedding(dict_sizes['rated'],emb_sizes['rated'])(input[:,4]),
+            layers.Embedding(dict_sizes['genre'],emb_sizes['genre'])(input[:,5]),
+            layers.Embedding(dict_sizes['occu'],emb_sizes['occu'])(input[:,6]),
+            layers.Embedding(dict_sizes['zipcode'],emb_sizes['zipcode'])(input[:,7])
             ])
     output=layers.Concatenate()(embeddings)
 
-    return Model(inputs,output)
+    return Model(input,output)
