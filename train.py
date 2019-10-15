@@ -227,12 +227,11 @@ def main():
                     global_optimizer.apply_gradients(zip(grad,global_model.trainable_weights))
                     theta1_grads.append(grad)
             # apply every gradients to embedding layer weights
-            print(len(theta1_grads))
-            print(len(theta1_grads[0]))
-            print(type(theta1_grads[0]))
-            print(theta1_grads[0][0])
-            print(theta1_grads[0][1])
-            final_theta1_grad=tf.add_n(theta1_grads)/USER_BATCH_SIZE
+            final_theta1_grad=[]
+            for i in range(len(theta1_grads[0])):
+                data=[elem[i] for elem in theta1_grads]
+                final_data=tf.add_n(data)/USER_BATCH_SIZE
+                final_theta1_grad.append(final_data)
             global_optimizer.apply_gradients(zip(final_theta1_grad,global_model.trainable_weights))
 
             # calculate each local gradients per user for updated global theta1
@@ -262,7 +261,11 @@ def main():
             # update global dense layer weights
             #local_model.load_weights('theta2.h5')
             local_model.set_weights(local_model_weights)
-            final_theta2_grad=tf.add_n(theta2_grads)
+            final_theta2_grad=[]
+            for i in range(len(theta2_grads[0])):
+                data=[elem[i] for elem in theta2_grads]
+                final_data=tf.add_n(data)
+                final_theta2_grad.append(final_data)
             global_optimizer.apply_gradients(zip(final_theta2_grad,local_model.trainable_weights))
             #local_model.save_weights('theta2.h5')
             local_model_weights=local_model.get_weights()
@@ -271,6 +274,7 @@ def main():
             # use MAE ( paper's choice )
             batch_val_loss=0
             for j,user in enumerate(users):
+                print(len(user))
                 validation_batch=user[scenario_len:scenario_len+validatioin_len]   # this is actually all of it
                 batch_input=[
                     [existing_movies_df.loc[elem.movie_id].director,
@@ -285,8 +289,10 @@ def main():
                 ]
                 batch_labels=[elem.rate for elem in validation_batch]
 
-                val_embedded=local_model.predict_on_batch(batch_input,validatioin_len)
-                val_logits=global_model(val_embedded)
+                print(batch_input[0])
+
+                val_embedded=global_model.predict(batch_input,steps=validatioin_len)
+                val_logits=local_model.predict(val_embedded,steps=validatioin_len)
                 val_metric(batch_labels,val_logits)
                 total_val_loss=total_val_loss+val_metric.result()
                 val_metric.reset_state()
