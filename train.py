@@ -33,7 +33,7 @@ def main():
     user_rating_counts=session.query(Rating.user_id,func.count(Rating.user_id)).group_by(Rating.user_id).all()
 
     # user with more than 40 ratings
-    user_filtered=filter(lambda x: x[1]>39,user_rating_counts)
+    user_filtered=filter(lambda x: x[1]>45,user_rating_counts)
     actual_users_index=[elem[0] for elem in user_filtered]
 
     actor_dict,director_dict,rated_dict,genre_dict=get_movie_dict('movie_dict.json')
@@ -108,6 +108,9 @@ def main():
         if len(rating_existing_group[rating.user_id])<scenario_len+validatioin_len:
             rating_existing_group[rating.user_id].append(rating)
 
+    actual_users_index2=[idx for idx,elem in enumerate(rating_existing_group) if len(elem)>39]
+    
+
     dict_sizes={'zipcode':len(zipcode_dict),'actor':len(actor_dict),
                 'authdir':len(director_dict),'rated':len(rated_dict),
                 'year':MOVIE_MAX_YEAR-MOVIE_MIN_YEAR+1,'occu':occu_dict_size,
@@ -131,8 +134,8 @@ def main():
     # task batch size should divide scenario length
     TASK_BATCH_SIZE=9
 
-    total_batch=floor(len(actual_users_index)/USER_BATCH_SIZE)
-    remaining_users=len(actual_users_index)%USER_BATCH_SIZE
+    total_batch=floor(len(actual_users_index2)/USER_BATCH_SIZE)
+    remaining_users=len(actual_users_index2)%USER_BATCH_SIZE
 
     local_loss_fn=losses.MeanAbsoluteError()
     local_optimizer=optimizers.Adam(alpha)
@@ -165,7 +168,7 @@ def main():
         total_val_loss=0
         for i in range(total_batch):
             print('user batch # {}'.format(i))
-            users=[rating_existing_group[elem] for elem in actual_users_index[i*USER_BATCH_SIZE:(i+1)*USER_BATCH_SIZE]]
+            users=[rating_existing_group[elem] for elem in actual_users_index2[i*USER_BATCH_SIZE:(i+1)*USER_BATCH_SIZE]]
 
             theta2_user_weights=[]
 
@@ -289,13 +292,11 @@ def main():
                 ]
                 batch_labels=[elem.rate for elem in validation_batch]
 
-                print(batch_input[0])
-
-                val_embedded=global_model.predict(batch_input,steps=validatioin_len)
-                val_logits=local_model.predict(val_embedded,steps=validatioin_len)
+                # only one batch, so need to be in one-item list
+                val_embedded=global_model.predict_on_batch([batch_input])
+                val_logits=local_model.predict_on_batch(val_embedded)
                 val_metric(batch_labels,val_logits)
-                total_val_loss=total_val_loss+val_metric.result()
-                val_metric.reset_state()
+                batch_val_loss=batch_val_loss+val_metric.result()
 
 
             print('validation loss: %s' % (float(batch_val_loss),))
