@@ -126,7 +126,7 @@ def main():
     utils.plot_model(global_model,'global.png',True,expand_nested=True)
     utils.plot_model(local_model,'local.png',True,expand_nested=True)
 
-    USER_BATCH_SIZE=32
+    USER_BATCH_SIZE=128
 
     # task batch size should divide scenario length
     TASK_BATCH_SIZE=9
