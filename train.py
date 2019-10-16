@@ -5,7 +5,7 @@ from tensorflow.keras import metrics,Model,layers,Sequential,losses,optimizers,u
 from connect_db import Session,engine
 from data_models import Movie,User,Rating
 import json
-from model import MeluGlobal,MeluLocal
+from melu_model import MeluGlobal,MeluLocal
 from sqlalchemy import func
 from math import floor
 
