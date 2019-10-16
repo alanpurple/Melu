@@ -129,7 +129,7 @@ def main():
     USER_BATCH_SIZE=128
 
     # task batch size should divide scenario length
-    TASK_BATCH_SIZE=9
+    TASK_BATCH_SIZE=18
 
     total_batch=floor(len(actual_users_index2)/USER_BATCH_SIZE)
     remaining_users=len(actual_users_index2)%USER_BATCH_SIZE
