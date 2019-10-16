@@ -126,9 +126,6 @@ def main():
     utils.plot_model(global_model,'global.png',True,expand_nested=True)
     utils.plot_model(local_model,'local.png',True,expand_nested=True)
 
-    print(local_model.inputs)
-    print(global_model.inputs)
-
     USER_BATCH_SIZE=32
 
     # task batch size should divide scenario length
@@ -176,7 +173,6 @@ def main():
 
             # calculate local weights per user
             for j,user in enumerate(users):
-                print('user #',j)
                 #local_model.load_weights('theta2.h5')
                 local_model.set_weights(local_model_weights)
                 # [authdir,year,age,actor,rated,genre,occu,zipcode]
@@ -277,7 +273,6 @@ def main():
             # use MAE ( paper's choice )
             batch_val_loss=0
             for j,user in enumerate(users):
-                print(len(user))
                 validation_batch=user[scenario_len:scenario_len+validatioin_len]   # this is actually all of it
                 batch_input=[
                     [existing_movies_df.loc[elem.movie_id].director,
