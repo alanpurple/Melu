@@ -19,7 +19,8 @@ from math import floor
 MOVIE_MIN_YEAR=1919
 MOVIE_MAX_YEAR=2000
 MAX_USER_ID=6040
-scenario_len=36
+scenario_len=40
+query_len=10
 validatioin_len=4
 alpha=0.01
 beta=0.01
@@ -33,7 +34,7 @@ def main():
     user_rating_counts=session.query(Rating.user_id,func.count(Rating.user_id)).group_by(Rating.user_id).all()
 
     # user with more than 40 ratings
-    user_filtered=filter(lambda x: x[1]>45,user_rating_counts)
+    user_filtered=filter(lambda x: x[1]>50,user_rating_counts)
     actual_users_index=[elem[0] for elem in user_filtered]
 
     actor_dict,director_dict,rated_dict,genre_dict=get_movie_dict('movie_dict.json')
@@ -109,6 +110,10 @@ def main():
             rating_existing_group[rating.user_id].append(rating)
 
     actual_users_index2=[idx for idx,elem in enumerate(rating_existing_group) if len(elem)>39]
+
+    rating_new_exist_group=[[] for _ in range(MAX_USER_ID+1)]
+    for rating in rating_new_exist:
+        pass
     
 
     dict_sizes={'zipcode':len(zipcode_dict),'actor':len(actor_dict),
