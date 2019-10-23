@@ -34,7 +34,7 @@ def main():
     user_rating_counts=session.query(Rating.user_id,func.count(Rating.user_id)).group_by(Rating.user_id).all()
 
     # user with more than 40 ratings
-    user_filtered=filter(lambda x: x[1]>50,user_rating_counts)
+    user_filtered=filter(lambda x: x[1]>60,user_rating_counts)
     actual_users_index=[elem[0] for elem in user_filtered]
 
     actor_dict,director_dict,rated_dict,genre_dict=get_movie_dict('movie_dict.json')
@@ -86,9 +86,9 @@ def main():
 
 
     rating_existing=session.query(Rating).join(User).filter(User.id.in_(user_existing.index)).join(Movie).filter(Movie.year<1998).all()
-    rating_exist_new=session.query(Rating).join(User).filter(User.id.in_(user_existing.index)).join(Movie).filter(Movie.year>1997).all()
-    rating_new_exist=session.query(Rating).join(User).filter(User.id.in_(user_new.index)).join(Movie).filter(Movie.year<1998).all()
-    rating_new_new=session.query(Rating).join(User).filter(User.id.in_(user_new.index)).join(Movie).filter(Movie.year>1997).all()
+    #rating_exist_new=session.query(Rating).join(User).filter(User.id.in_(user_existing.index)).join(Movie).filter(Movie.year>1997).all()
+    #rating_new_exist=session.query(Rating).join(User).filter(User.id.in_(user_new.index)).join(Movie).filter(Movie.year<1998).all()
+    #rating_new_new=session.query(Rating).join(User).filter(User.id.in_(user_new.index)).join(Movie).filter(Movie.year>1997).all()
 
     '''
     train_genders=[1 if elem.user.genre=='M' else 0 for elem in rating_existing]
@@ -105,15 +105,11 @@ def main():
 
     rating_existing_group=[[] for _ in range(MAX_USER_ID+1)]
     for rating in rating_existing:
-        # 40 ratings per user, 36 for train, 4(randomly selected) for validation
-        if len(rating_existing_group[rating.user_id])<scenario_len+validatioin_len:
+        # 40 ratings per user, + 10 queries
+        if len(rating_existing_group[rating.user_id])<scenario_len+query_len:
             rating_existing_group[rating.user_id].append(rating)
 
-    actual_users_index2=[idx for idx,elem in enumerate(rating_existing_group) if len(elem)>39]
-
-    rating_new_exist_group=[[] for _ in range(MAX_USER_ID+1)]
-    for rating in rating_new_exist:
-        pass
+    actual_users_index2=[idx for idx,elem in enumerate(rating_existing_group) if len(elem)>scenario_len+query_len-1]
     
 
     dict_sizes={'zipcode':len(zipcode_dict),'actor':len(actor_dict),
@@ -134,15 +130,15 @@ def main():
     USER_BATCH_SIZE=128
 
     # task batch size should divide scenario length
-    TASK_BATCH_SIZE=18
+    TASK_BATCH_SIZE=20
 
     total_batch=floor(len(actual_users_index2)/USER_BATCH_SIZE)
-    remaining_users=len(actual_users_index2)%USER_BATCH_SIZE
+    #remaining_users=len(actual_users_index2)%USER_BATCH_SIZE
 
     local_loss_fn=losses.MeanAbsoluteError()
     local_optimizer=optimizers.Adam(alpha)
     global_optimizer=optimizers.Adam(beta)
-    global_loss_fn=losses.MeanAbsoluteError()
+    #global_loss_fn=losses.MeanAbsoluteError()
 
     #local_model.compile(local_optimizer,local_loss_fn,[metrics.MeanAbsoluteError()])
     #global_model.compile(global_optimizer,global_loss_fn,[metrics.MeanAbsoluteError()])
@@ -151,7 +147,7 @@ def main():
     local_model_weights=local_model.get_weights()
 
     # prepare training metric
-    val_metric=metrics.MeanAbsoluteError()
+    #val_metric=metrics.MeanAbsoluteError()
     for epoch in range(30):
         print('start epoch {}'.format(epoch))
         # previous validation loss to decide early stopping
@@ -159,15 +155,15 @@ def main():
         # prev2_val_loss - epoch-2 loss
         # prev3_val_loss - epoch-3 loss
         if epoch>19:
-            prev3_val_loss=prev2_val_loss
-            prev2_val_loss=prev_val_loss
-            prev_val_loss=total_val_loss
+            prev3_train_loss=prev2_train_loss
+            prev2_train_loss=prev_train_loss
+            prev_train_loss=total_train_loss
         elif epoch==19:
-            prev2_val_loss=prev_val_loss
-            prev_val_loss=total_val_loss
+            prev2_train_loss=prev_train_loss
+            prev_train_loss=total_train_loss
         elif epoch==18:
-            prev_val_loss=total_val_loss
-        total_val_loss=0
+            prev_train_loss=total_train_loss
+        total_train_loss=0
         for i in range(total_batch):
             print('user batch # {}'.format(i))
             users=[rating_existing_group[elem] for elem in actual_users_index2[i*USER_BATCH_SIZE:(i+1)*USER_BATCH_SIZE]]
@@ -190,11 +186,11 @@ def main():
                     existing_movies_df.loc[elem.movie_id].genre,
                     all_users_df.loc[elem.user_id].occupation,
                     all_users_df.loc[elem.user_id].zipcode
-                    ] for elem in user
+                    ] for elem in user[:scenario_len]
                 ]
-                label_data=[elem.rate for elem in user]
+                label_data=[elem.rate for elem in user[:scenario_len]]
                 train_dataset=tf.data.Dataset.from_tensor_slices((user_data,label_data)).batch(TASK_BATCH_SIZE,True)
-                for step,(user_batch,label_batch) in enumerate(train_dataset):
+                for (user_batch,label_batch) in train_dataset:
                     batch_emb_out=global_model(user_batch)
                     with tf.GradientTape() as tape:
                         logits=local_model(batch_emb_out)
@@ -205,10 +201,11 @@ def main():
                 theta2_user_weights.append(local_model.get_weights())
             # calculate gradients for each uesr
             theta1_grads=[]
+            theta1_losses=0
             for j,user in enumerate(users):
                 #local_model.load_weights('theta2_{}.h5'.format(j))
                 local_model.set_weights(theta2_user_weights[j])
-                user_data=[
+                user_query=[
                     [existing_movies_df.loc[elem.movie_id].director,
                     existing_movies_df.loc[elem.movie_id].year,
                     all_users_df.loc[elem.user_id].age,
@@ -217,21 +214,21 @@ def main():
                     existing_movies_df.loc[elem.movie_id].genre,
                     all_users_df.loc[elem.user_id].occupation,
                     all_users_df.loc[elem.user_id].zipcode
-                    ] for elem in user
+                    ] for elem in user[scenario_len:]
                 ]
-                label_data=[elem.rate for elem in user]
-                train_dataset=tf.data.Dataset.from_tensor_slices((user_data,label_data)).batch(TASK_BATCH_SIZE,True)
-                for step,(user_batch,label_batch) in enumerate(train_dataset):
-                    with tf.GradientTape() as tape:
-                        batch_emb_out=global_model(user_batch)
-                        logits=local_model(batch_emb_out)
-                        local_loss=local_loss_fn(label_batch,logits)
-                        # there will be USER_BATCH_SIZE * scenario_len/TASK_BATCH_SIZE gradients
-                    grad=tape.gradient(local_loss,global_model.trainable_weights)
-                    global_optimizer.apply_gradients(zip(grad,global_model.trainable_weights))
-                    theta1_grads.append(grad)
+                label_data=[elem.rate for elem in user[scenario_len:]]
+                with tf.GradientTape() as tape:
+                    emb_out=global_model(user_query)
+                    logits=local_model(emb_out)
+                    local_loss=local_loss_fn(label_data,logits)
+                    theta1_losses+=local_loss
+                    # there will be USER_BATCH_SIZE * scenario_len/TASK_BATCH_SIZE gradients
+                grad=tape.gradient(local_loss,global_model.trainable_weights)
+                global_optimizer.apply_gradients(zip(grad,global_model.trainable_weights))
+                theta1_grads.append(grad)
             # apply every gradients to embedding layer weights
             final_theta1_grad=[]
+            theata2_losses=0
             for i in range(len(theta1_grads[0])):
                 data=[elem[i] for elem in theta1_grads]
                 final_data=tf.add_n(data)/USER_BATCH_SIZE
@@ -242,8 +239,10 @@ def main():
             theta2_grads=[]
             for j,user in enumerate(users):
                 #local_model.load_weights('theta2_{}.h5'.format(j))
-                local_model.set_weights(theta2_user_weights[j])
-                user_data=[
+                # below line is wrong(maybe)
+                #local_model.set_weights(theta2_user_weights[j])
+                local_model.set_weights(local_model_weights)
+                user_query=[
                     [existing_movies_df.loc[elem.movie_id].director,
                     existing_movies_df.loc[elem.movie_id].year,
                     all_users_df.loc[elem.user_id].age,
@@ -252,23 +251,22 @@ def main():
                     existing_movies_df.loc[elem.movie_id].genre,
                     all_users_df.loc[elem.user_id].occupation,
                     all_users_df.loc[elem.user_id].zipcode
-                    ] for elem in user
+                    ] for elem in user[scenario_len:]
                 ]
-                label_data=[elem.rate for elem in user]
-                train_dataset=tf.data.Dataset.from_tensor_slices((user_data,label_data)).batch(TASK_BATCH_SIZE,True)
-                for step,(user_batch,label_batch) in enumerate(train_dataset):
-                    batch_emb_out=global_model(user_batch)
-                    with tf.GradientTape() as tape:
-                        logits=local_model(batch_emb_out)
-                        local_loss=local_loss_fn(label_batch,logits)
-                    theta2_grads.append(tape.gradient(local_loss,local_model.trainable_weights))
+                label_data=[elem.rate for elem in user[scenario_len:]]
+                emb_out=global_model(user_query)
+                with tf.GradientTape() as tape:
+                    logits=local_model(emb_out)
+                    local_loss=local_loss_fn(label_data,logits)
+                    theata2_losses+=local_loss
+                theta2_grads.append(tape.gradient(local_loss,local_model.trainable_weights))
             # update global dense layer weights
             #local_model.load_weights('theta2.h5')
             local_model.set_weights(local_model_weights)
             final_theta2_grad=[]
             for i in range(len(theta2_grads[0])):
                 data=[elem[i] for elem in theta2_grads]
-                final_data=tf.add_n(data)
+                final_data=tf.add_n(data)/USER_BATCH_SIZE
                 final_theta2_grad.append(final_data)
             global_optimizer.apply_gradients(zip(final_theta2_grad,local_model.trainable_weights))
             #local_model.save_weights('theta2.h5')
@@ -276,6 +274,7 @@ def main():
 
             # To Do: evaluate validation
             # use MAE ( paper's choice )
+            '''
             batch_val_loss=0
             for j,user in enumerate(users):
                 validation_batch=user[scenario_len:scenario_len+validatioin_len]   # this is actually all of it
@@ -297,21 +296,27 @@ def main():
                 val_logits=local_model.predict_on_batch(val_embedded)
                 val_metric(batch_labels,val_logits)
                 batch_val_loss=batch_val_loss+val_metric.result()
-
+            
 
             print('validation loss: %s' % (float(batch_val_loss),))
-            total_val_loss+=batch_val_loss
+            total_train_loss+=batch_val_loss
             # To do: end train if validation loss increases of not be reduced enogh - Early stopping
+            '''
+            #measure total training loss
+            total_train_loss+=theta1_losses+theata2_losses
+
         if epoch%5==0:
             local_model.save('models/local_model_{}.h5'.format(epoch))
             global_model.save('models/global_model_{}.h5'.format(epoch))
         if epoch>19:
-            min_prev_loss=min([prev_val_loss,prev2_val_loss,prev3_val_loss])
-            print('previous validation loss: ',min_prev_loss)
-            print('current validation loss at epoch {}: '.format(epoch), total_val_loss)
-            if total_val_loss>min_prev_loss:
-                print('total validation loss increases, end training')
+            pass
+            min_prev_loss=min([prev_train_loss,prev2_train_loss,prev3_train_loss])
+            print('previous train loss: ',min_prev_loss)
+            print('current train loss at epoch {}: '.format(epoch), total_train_loss)
+            if total_train_loss>min_prev_loss:
+                print('total train loss increases, end training')
                 break
+
     local_model.save('models/local_model_{}_final.h5'.format(epoch))
     global_model.save('models/global_model_{}_final.h5'.format(epoch))
                 
