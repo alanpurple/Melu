@@ -264,9 +264,7 @@ def main():
                     local_loss=local_loss_fn(label_batch,logits)
                     theata2_losses+=local_loss.numpy()
                 theta2_grads.append(tape.gradient(local_loss,local_model.trainable_weights))
-            # update global dense layer weights
-            #local_model.load_weights('theta2.h5')
-            local_model.set_weights(local_model_weights)
+            # update local dense layer weights
             final_theta2_grad=[]
             for k in range(len(theta2_grads[0])):
                 data=[elem[k] for elem in theta2_grads]
