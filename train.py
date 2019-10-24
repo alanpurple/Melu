@@ -223,7 +223,7 @@ def main():
                     emb_out=global_model(query_batch)
                     logits=local_model(emb_out)
                     local_loss=local_loss_fn(label_batch,logits)
-                    theta1_losses+=local_loss
+                    theta1_losses+=local_loss.numpy()
                     # there will be USER_BATCH_SIZE * scenario_len/TASK_BATCH_SIZE gradients
                 grad=tape.gradient(local_loss,global_model.trainable_weights)
                 global_optimizer.apply_gradients(zip(grad,global_model.trainable_weights))
@@ -262,7 +262,7 @@ def main():
                 with tf.GradientTape() as tape:
                     logits=local_model(emb_out)
                     local_loss=local_loss_fn(label_batch,logits)
-                    theata2_losses+=local_loss
+                    theata2_losses+=local_loss.numpy()
                 theta2_grads.append(tape.gradient(local_loss,local_model.trainable_weights))
             # update global dense layer weights
             #local_model.load_weights('theta2.h5')
