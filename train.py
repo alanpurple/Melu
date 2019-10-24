@@ -310,15 +310,14 @@ def main():
             print('batch #{} theta1 loss:{}'.format(i,theta1_losses))
             print('batch #{} theta2 loss:{}'.format(i,theata2_losses))
             total_train_loss+=theta1_losses+theata2_losses
-
+        print('current train loss at epoch {}: '.format(epoch), total_train_loss)
         if epoch%5==0:
             local_model.save('models/local_model_{}.h5'.format(epoch))
             global_model.save('models/global_model_{}.h5'.format(epoch))
         if epoch>19:
-            pass
             min_prev_loss=min([prev_train_loss,prev2_train_loss,prev3_train_loss])
             print('previous train loss: ',min_prev_loss)
-            print('current train loss at epoch {}: '.format(epoch), total_train_loss)
+            
             if total_train_loss>min_prev_loss:
                 print('total train loss increases, end training')
                 break
