@@ -226,11 +226,10 @@ def main():
                     theta1_losses+=local_loss.numpy()
                     # there will be USER_BATCH_SIZE * scenario_len/TASK_BATCH_SIZE gradients
                 grad=tape.gradient(local_loss,global_model.trainable_weights)
-                global_optimizer.apply_gradients(zip(grad,global_model.trainable_weights))
                 theta1_grads.append(grad)
             # apply every gradients to embedding layer weights
             final_theta1_grad=[]
-            theata2_losses=0
+            theta2_losses=0
             for k in range(len(theta1_grads[0])):
                 data=[elem[k] for elem in theta1_grads]
                 final_data=tf.add_n(data)/USER_BATCH_SIZE
@@ -262,7 +261,7 @@ def main():
                 with tf.GradientTape() as tape:
                     logits=local_model(emb_out)
                     local_loss=local_loss_fn(label_batch,logits)
-                    theata2_losses+=local_loss.numpy()
+                    theta2_losses+=local_loss.numpy()
                 theta2_grads.append(tape.gradient(local_loss,local_model.trainable_weights))
             # update local dense layer weights
             final_theta2_grad=[]
@@ -306,8 +305,8 @@ def main():
             '''
             #measure total training loss
             print('batch #{} theta1 loss:{}'.format(i,theta1_losses))
-            print('batch #{} theta2 loss:{}'.format(i,theata2_losses))
-            total_train_loss+=theta1_losses+theata2_losses
+            print('batch #{} theta2 loss:{}'.format(i,theta2_losses))
+            total_train_loss+=theta1_losses+theta2_losses
         print('current train loss at epoch {}: '.format(epoch), total_train_loss)
         if epoch%5==0:
             local_model.save('models/local_model_{}.h5'.format(epoch))
