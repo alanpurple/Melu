@@ -217,10 +217,12 @@ def main():
                     ] for elem in user[scenario_len:]
                 ]
                 label_data=[elem.rate for elem in user[scenario_len:]]
+                train_dataset=tf.data.Dataset.from_tensor_slices((user_query,label_data)).batch(query_len)
+                (query_batch,label_batch)=next(iter(train_dataset))
                 with tf.GradientTape() as tape:
-                    emb_out=global_model(user_query)
+                    emb_out=global_model(query_batch)
                     logits=local_model(emb_out)
-                    local_loss=local_loss_fn(label_data,logits)
+                    local_loss=local_loss_fn(label_batch,logits)
                     theta1_losses+=local_loss
                     # there will be USER_BATCH_SIZE * scenario_len/TASK_BATCH_SIZE gradients
                 grad=tape.gradient(local_loss,global_model.trainable_weights)
@@ -254,10 +256,12 @@ def main():
                     ] for elem in user[scenario_len:]
                 ]
                 label_data=[elem.rate for elem in user[scenario_len:]]
-                emb_out=global_model(user_query)
+                train_dataset=tf.data.Dataset.from_tensor_slices((user_query,label_data)).batch(query_len)
+                (query_batch,label_batch)=next(iter(train_dataset))
+                emb_out=global_model(query_batch)
                 with tf.GradientTape() as tape:
                     logits=local_model(emb_out)
-                    local_loss=local_loss_fn(label_data,logits)
+                    local_loss=local_loss_fn(label_batch,logits)
                     theata2_losses+=local_loss
                 theta2_grads.append(tape.gradient(local_loss,local_model.trainable_weights))
             # update global dense layer weights
@@ -303,6 +307,8 @@ def main():
             # To do: end train if validation loss increases of not be reduced enogh - Early stopping
             '''
             #measure total training loss
+            print('batch #{} theta1 loss:{}'.format(i,theta1_losses))
+            print('batch #{} theta2 loss:{}'.format(i,theata2_losses))
             total_train_loss+=theta1_losses+theata2_losses
 
         if epoch%5==0:
