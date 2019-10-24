@@ -231,8 +231,8 @@ def main():
             # apply every gradients to embedding layer weights
             final_theta1_grad=[]
             theata2_losses=0
-            for i in range(len(theta1_grads[0])):
-                data=[elem[i] for elem in theta1_grads]
+            for k in range(len(theta1_grads[0])):
+                data=[elem[k] for elem in theta1_grads]
                 final_data=tf.add_n(data)/USER_BATCH_SIZE
                 final_theta1_grad.append(final_data)
             global_optimizer.apply_gradients(zip(final_theta1_grad,global_model.trainable_weights))
@@ -268,8 +268,8 @@ def main():
             #local_model.load_weights('theta2.h5')
             local_model.set_weights(local_model_weights)
             final_theta2_grad=[]
-            for i in range(len(theta2_grads[0])):
-                data=[elem[i] for elem in theta2_grads]
+            for k in range(len(theta2_grads[0])):
+                data=[elem[k] for elem in theta2_grads]
                 final_data=tf.add_n(data)/USER_BATCH_SIZE
                 final_theta2_grad.append(final_data)
             global_optimizer.apply_gradients(zip(final_theta2_grad,local_model.trainable_weights))
